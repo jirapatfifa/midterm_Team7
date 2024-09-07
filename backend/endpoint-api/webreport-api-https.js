@@ -4,7 +4,13 @@ const AuthBearer = require('hapi-auth-bearer-token');
 let fs = require('fs');
 let cors = require('cors');
 
+
+const apiconfig = require('./apiconfig')
+
 const OnlineAgent = require('./repository/OnlineAgent');
+
+
+
 
 //-------------------------------------
 
@@ -13,8 +19,9 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
 const apiport = 8700
 
 var url = require('url');
+const { DateTime } = require('mssql');
 
-//---------------- Websocket Part1 Start -----------------------
+//---------------- Websocket -----------------------------
 
 var webSocketServer = new (require('ws')).Server({
     port: (process.env.PORT || 8701)
@@ -87,8 +94,7 @@ webSocketServer.on('connection', (ws, req) => {
 
 });
 
-//---------------- Websocket Part1 End -----------------------
-
+//---------------- Websocket -----------------------------
 
 //init Express
 var app = express();
@@ -100,6 +106,7 @@ var router = express.Router();
 router.get('/status', function (req, res) {
     res.json({
         status: 'App is running!'
+        
     });
 });
 
@@ -111,17 +118,17 @@ app.use("/", router);
 
 const init = async () => {
     //process.setMaxListeners(0);
-    require('events').defaultMaxListeners = 0;
-
+    require('events').defaultMaxListeners = 0; 
     process.setMaxListeners(0);
 
     var fs = require('fs');
-
+ 
     var tls = {
         key: fs.readFileSync('server.key'),
         cert: fs.readFileSync('server.crt')
     };
 
+    //const server = Hapi.Server({
     const server = hapi.Server({
         port: apiport,
         host: '0.0.0.0',
@@ -150,12 +157,13 @@ const init = async () => {
 
             // here is where you validate your token
             // comparing with token from your database for example
-            const isValid = token === '1aaZ!ARgAQGuQzp00D5D000000.mOv2jmhXkfIsjgywpCIh7.HZpc6vED1LCbc90DTaVDJwdNqbTW5r4uZicv8AFfkOE1ialqnR8UN5.wnAgh090h';
-
+            
+            const isValid = token === apiconfig.development.serverKey || token === apiconfig.production.serverKey ;
+            
             const credentials = { token };
             const artifacts = { test: 'info' };
 
-            return { isValid, credentials, artifacts };
+            return { isValid, credentials, artifacts, };
         }
     });
 
@@ -165,7 +173,7 @@ const init = async () => {
 
     server.route({
         method: 'GET',
-        path: '/engse207/api/v1/',
+        path: '/',
         config: {
             cors: {
                 origin: [
@@ -187,9 +195,10 @@ const init = async () => {
         }
     });
 
+
     server.route({
         method: 'GET',
-        path: '/engse207/api/v1/getOnlineAgentByAgentCode',
+        path: '/api/v1/getOnlineAgentByAgentCode',
         config: {
             cors: {
                 origin: [
@@ -208,6 +217,7 @@ const init = async () => {
                 param.agentcode
                 if (param.agentcode == null)
                     return h.response("Please provide agentcode.").code(400);
+                    
                 else {
 
                     const responsedata = await OnlineAgent.OnlineAgentRepo.getOnlineAgentByAgentCode(`${param.agentcode}`);
@@ -233,7 +243,7 @@ const init = async () => {
 
     server.route({
         method: 'POST',
-        path: '/engse207/api/v1/postOnlineAgentStatus',
+        path: '/api/v1/postOnlineAgentStatus',
         config: {
             cors: {
                 origin: [
@@ -257,7 +267,6 @@ const init = async () => {
             const IsLogin = param.IsLogin;
             const AgentStatus = param.AgentStatus;
             var d = new Date();
-
             try {
 
                 if (param.AgentCode == null)
@@ -265,11 +274,9 @@ const init = async () => {
                 else {
 
                     const responsedata = await OnlineAgent.OnlineAgentRepo.postOnlineAgentStatus(AgentCode, AgentName, IsLogin, AgentStatus);
-
-                    //---------------- Websocket Part2 Start -----------------------
-
-                    if (!responsedata.error) {
-                        if (clientWebSockets[AgentCode]) {
+                    
+                    if(!responsedata.error){
+                        if(clientWebSockets[AgentCode]){
 
                             clientWebSockets[AgentCode].send(JSON.stringify({
                                 MessageType: '4',
@@ -279,15 +286,13 @@ const init = async () => {
                                 AgentStatus: AgentStatus,
                                 DateTime: d.toLocaleString('en-US'),
                             }));
-
-                            return ({
+                            return({
                                 error: false,
-                                message: "Agent status has been set.",
+                                message:"Agent status has been set."
                             });
-
                         }
                     }
-                    //---------------- Websocket Part2 End -----------------------
+
 
                     if (responsedata.statusCode == 200)
                         return responsedata;
@@ -309,73 +314,7 @@ const init = async () => {
 
     server.route({
         method: 'POST',
-        path: '/engse207/api/v1/postSendMessage',
-        config: {
-            cors: {
-                origin: [
-                    '*'
-                ],
-                headers: ["Access-Control-Allow-Headers", "Access-Control-Allow-Origin", "Accept", "Authorization", "Content-Type", "If-None-Match", "Accept-language"],
-                additionalHeaders: ["Access-Control-Allow-Headers: Origin, Content-Type, x-ms-request-id , Authorization"],
-                credentials: true
-            },
-            payload: {
-                parse: true,
-                allow: ['application/json', 'multipart/form-data'],
-                multipart: true  // <== this is important in hapi 19
-            }
-        },
-        handler: async (request, h) => {
-            let param = request.payload;
-
-            const FromAgentCode = param.FromAgentCode;
-            const ToAgentCode = param.ToAgentCode;
-            const Message = param.Message;
-            var d = new Date();
-
-            try {
-
-                if ((param.FromAgentCode == null) || (param.ToAgentCode == null))
-                    return h.response("Please provide AgentCode.").code(400);
-                else {
-
-                    //---------------- Websocket -----------------------------
-
-                    if (clientWebSockets[ToAgentCode]) {
-
-                        clientWebSockets[ToAgentCode].send(JSON.stringify({
-                            MessageType: '5',
-                            FromAgentCode: FromAgentCode,
-                            ToAgentCode: ToAgentCode,
-                            DateTime: d.toLocaleString('en-US'),
-                            Message: Message,
-                        }));
-
-                        return ({
-                            error: false,
-                            message: "Message has been set.",
-                        });
-
-                    }
-                    else
-                        return h.response("Agent not found, can not send message to agent.").code(404);
-
-                    //---------------- Websocket -----------------------------
-
-                }
-
-            } catch (err) {
-                console.dir(err)
-            }
-
-        }
-
-    });
-
-
-    server.route({
-        method: 'POST',
-        path: '/engse207/api/v1/deleteOnlineAgent',
+        path: '/api/v1/deleteOnlineAgent',
         config: {
             cors: {
                 origin: [
@@ -399,7 +338,7 @@ const init = async () => {
             try {
 
                 const responsedata = await OnlineAgent.OnlineAgentRepo.deleteOnlineAgent(AgentCode);
-
+                
                 return responsedata;
 
             } catch (err) {
@@ -410,6 +349,80 @@ const init = async () => {
 
     });
 
+    server.route({
+        method: 'POST',
+        path: '/api/v1/postSendMessage',
+        config: {
+            cors: {
+                origin: ['*'],
+                headers: ["Access-Control-Allow-Headers", "Access-Control-Allow-Origin", "Accept", "Authorization", "Content-Type", "If-None-Match", "Accept-language"],
+                additionalHeaders: ["Access-Control-Allow-Headers: Origin, Content-Type, x-ms-request-id , Authorization"],
+                credentials: true
+            },
+            auth: 'simple',  // Requires authentication
+            payload: {
+                parse: true,
+                allow: ['application/json', 'multipart/form-data'],
+                multipart: true  // Enable multipart form data
+            }
+        },
+        handler: async (request, h) => {
+            const { FromAgentCode, ToAgentCode, Message } = request.payload;
+            var d = new Date();
+    
+            try {
+                // Validate the required parameters
+                if (!FromAgentCode || !ToAgentCode || !Message) {
+                    return h.response({
+                        "error": true,
+                        "statusCode": 400,
+                        "errMessage": "Please provide agentcode."
+                    }).code(400);
+                }
+    
+                // Check if the recipient agent is connected
+                if (clientWebSockets[ToAgentCode]) {
+                    // Send the message to the recipient agent
+                    clientWebSockets[ToAgentCode].send(JSON.stringify({
+                        MessageType: '1',  // You can use any message type code
+                        FromAgentCode: FromAgentCode,
+                        ToAgentCode: ToAgentCode,
+                        Message: Message,
+                        DateTime: d.toLocaleString('en-US'),
+                    }));
+    
+                    return h.response({
+                        "error": false,
+                        "statusCode": 200,
+                        "fromAgentCode": FromAgentCode,
+                        "message": `${Message}`
+                    }).code(200);
+                } else {
+                    // If the recipient is not connected
+                    return h.response({
+                        "error": true,
+                        "statusCode": 404,
+                        "errMessage": "Agent not found, cannot send message to agent."
+                    }).code(404);
+                }
+            } catch (err) {
+                console.dir(err);
+                return h.response({
+                    "error": true,
+                    "statusCode": 500,
+                    "errMessage": "Something went wrong. Please try again later."
+                }).code(500);
+            }
+        }
+    });
+    //-------- Code continue here -------------------
+    //
+    //
+    //
+    //
+    //
+    //
+    //----------------------------------------------
 
     await server.start();
     console.log('Webreport API Server running on %s', server.info.uri);
