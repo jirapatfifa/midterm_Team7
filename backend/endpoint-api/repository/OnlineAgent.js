@@ -1,14 +1,5 @@
 const sql = require('mssql');
-//const sqlConfig = require('../sqlConfig')['development'];
-let sqlConfig;
-
-if (process.env.NODE_ENV === 'development') {
-    sqlConfig = require('../sqlConfig')['development'];
-}
-if (process.env.NODE_ENV === 'production') {
-    sqlConfig = require('../sqlConfig')['production'];
-}
-
+const sqlConfig = require('../sqlConfig')['production'];
 const { v4: uuid } = require('uuid');
 
 console.log("sqlConfig: ", sqlConfig);
