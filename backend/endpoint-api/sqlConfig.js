@@ -3,7 +3,7 @@ var dbconfig = {
         server: '192.168.56.104',
         database:'team7_web_labDB',
         user:'sa',
-        password:'Fifa162545',
+        password:'P@ssw0rd',
         port: 1433,
         options:{
             encript: true,
